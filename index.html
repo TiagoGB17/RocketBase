@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title> RocketBase </title>
+<title>RocketBase</title>
 <meta name="description" content="Banco público de lançamentos de foguetes de garrafa PET do Brasil. Registre, compare e aprenda.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -96,6 +96,8 @@ svg text{fill:var(--muted);font:12px var(--f-data)}
 svg .ax{stroke:var(--line)}
 svg .pt{fill:var(--accent);fill-opacity:.7;stroke:var(--surface)}
 .empty{padding:28px;text-align:center;color:var(--muted)}
+#imp-res ul{margin:8px 0;padding-left:20px;font-size:15px;max-width:75ch}
+#imp-res .bad{color:var(--flame)}
 @media (max-width:720px){.hero{grid-template-columns:1fr}.rocket{max-width:160px;justify-self:start;order:-1}.bar{grid-template-columns:100px 1fr 56px}}
 @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
 [hidden]{display:none!important}
@@ -104,7 +106,7 @@ svg .pt{fill:var(--accent);fill-opacity:.7;stroke:var(--surface)}
 <body>
 <header>
   <div class="wrap">
-    <a class="brand" href="#inicio">RocketBase</a>
+    <a class="brand" href="#inicio">Rocket<b>Base</b></a>
     <nav aria-label="Principal">
       <a href="#inicio" data-v="inicio">Início</a>
       <a href="#cadastrar" data-v="cadastrar">Cadastrar</a>
@@ -179,6 +181,17 @@ svg .pt{fill:var(--accent);fill-opacity:.7;stroke:var(--surface)}
       <button class="btn" type="submit" id="enviar">Enviar lançamento</button>
       <div id="msg" role="status"></div>
     </form>
+
+    <div class="panel" id="imp" style="margin-top:28px">
+      <h3>Tem vários lançamentos? Importe de uma planilha Excel</h3>
+      <p class="muted">Baixe o modelo, preencha uma linha por lançamento e envie o arquivo (.xlsx ou .csv, até 200 linhas). Você confere tudo antes de enviar.</p>
+      <div class="btns" style="margin-top:8px">
+        <button class="btn alt" type="button" id="modelo">Baixar modelo (.xlsx)</button>
+      </div>
+      <div class="fld" style="margin-top:14px;max-width:420px"><label for="arquivo">Planilha preenchida</label>
+        <input id="arquivo" type="file" accept=".xlsx,.xls,.csv"></div>
+      <div id="imp-res" role="status" style="margin-top:14px"></div>
+    </div>
   </section>
 
   <!-- EXPLORAR -->
@@ -193,7 +206,7 @@ svg .pt{fill:var(--accent);fill-opacity:.7;stroke:var(--surface)}
       <select id="f_ord" aria-label="Ordenar"><option value="recente">Mais recentes</option><option value="alcance">Maior distância</option></select>
     </div>
     <div class="tablebox" id="tabela"></div>
-    <div class="btns"><button class="btn alt" id="csv" type="button">Baixar CSV</button><span class="muted" id="conta" style="align-self:center"></span></div>
+    <div class="btns"><button class="btn" id="xlsx" type="button">Baixar Excel (.xlsx)</button><button class="btn alt" id="csv" type="button">Baixar CSV</button><span class="muted" id="conta" style="align-self:center"></span></div>
   </section>
 
   <!-- ESTATÍSTICAS -->
@@ -209,6 +222,7 @@ svg .pt{fill:var(--accent);fill-opacity:.7;stroke:var(--surface)}
   </section>
 </main>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="config.js"></script>
 <script>
 "use strict";
@@ -235,12 +249,12 @@ const OBJ = ["Teste","Campeonato","Competição","Olimpíada"];
 /* ---------- Armazenamento: Supabase se configurado, senão navegador ---------- */
 const CFG = window.ALCANTRAPET || {};
 const ONLINE = !!(CFG.supabaseUrl && CFG.supabaseKey);
-const LS = "alcantrapet.demo.v1";
+const LS = "rocketbase.demo.v1";
 const lsGet = () => { try { return JSON.parse(localStorage.getItem(LS)) || null; } catch { return null; } };
 const lsSet = (v) => { try { localStorage.setItem(LS, JSON.stringify(v)); } catch {} };
 const API = async (path, opt = {}) => {
   const r = await fetch(CFG.supabaseUrl.replace(/\/$/, "") + "/rest/v1/" + path, {
-    ...opt, headers: { apikey: CFG.supabaseKey, Authorization: "Bearer " + CFG.supabaseKey, "Content-Type": "application/json", Prefer: "return=minimal", ...(opt.headers || {}) } });
+    ...opt, headers: { apikey: CFG.supabaseKey, ...(CFG.supabaseKey.startsWith("eyJ") ? { Authorization: "Bearer " + CFG.supabaseKey } : {}), "Content-Type": "application/json", Prefer: "return=minimal", ...(opt.headers || {}) } });
   if (!r.ok) throw new Error("Erro " + r.status);
   return r.status === 204 || opt.method === "POST" ? null : r.json();
 };
@@ -358,8 +372,144 @@ $("#csv").onclick = () => {
   const cel = (v) => { v = v ?? ""; v = String(v); if (/^[=+\-@]/.test(v)) v = "'" + v; return '"' + v.replace(/"/g, '""') + '"'; };
   const csv = "﻿" + [cols.join(",")].concat(plano.map(o => cols.map(c => cel(o[c])).join(","))).join("\r\n");
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-  a.download = "alcantrapet-lancamentos.csv"; document.body.appendChild(a); a.click(); a.remove();
+  a.download = "rocketbase-lancamentos.csv"; document.body.appendChild(a); a.click(); a.remove();
 };
+
+/* ---------- Excel: exportar, modelo e importar ---------- */
+const FIXOS = [["nivel","Nível"],["nome","Nome do foguete"],["data","Data (aaaa-mm-dd)"],["cidade","Cidade"],["uf","UF"],["equipe","Equipe ou codinome"],["objetivo","Objetivo"],["alcance","Distância (m)"],["estab","Estabilidade"],["resumo","Resumo"]];
+const ESTAB = ["Estável", "Parcial", "Instável"];
+const MAX_LINHAS = 200;
+const CAMPOS = (() => {
+  const m = new Map();
+  Object.entries(NIVEIS).forEach(([n, v]) => v.sec.forEach(([k, t, fs]) => fs.forEach(([c, rot, tipo, un]) => {
+    const id = k + "_" + c;
+    if (!m.has(id)) m.set(id, { id, k, c, tipo, h: `${t} - ${rot}${un ? ` (${un})` : ""}`, niveis: [] });
+    m.get(id).niveis.push(+n);
+  })));
+  return [...m.values()];
+})();
+const norm = (s) => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+const LOOK = new Map();
+FIXOS.forEach(([k, h]) => LOOK.set(norm(h), { fixo: k }));
+LOOK.set("data", { fixo: "data" }); LOOK.set("distancia", { fixo: "alcance" });
+CAMPOS.forEach(c => LOOK.set(norm(c.h), { campo: c }));
+const semXlsx = (el) => { $(el).textContent = "Não foi possível carregar o recurso de Excel. Confira a conexão e recarregue a página."; };
+
+function achatar(x) {
+  const d = x.dados, o = {};
+  const fx = { nivel: x.nivel, nome: d.nome, data: d.data, cidade: d.cidade, uf: d.uf, equipe: d.equipe, objetivo: d.objetivo, alcance: x.alcance, estab: d.estab, resumo: d.resumo };
+  FIXOS.forEach(([k, h]) => { if (fx[k] != null && fx[k] !== "") o[h] = fx[k]; });
+  CAMPOS.forEach(c => { const v = d[c.k] && d[c.k][c.c]; if (v != null && v !== "") o[c.h] = v; });
+  return o;
+}
+$("#xlsx").onclick = () => {
+  if (typeof XLSX === "undefined") return semXlsx("#conta");
+  const linhas = filtrados().map(achatar);
+  const usados = CAMPOS.filter(c => linhas.some(l => l[c.h] !== undefined));
+  const cols = FIXOS.map(f => f[1]).concat(usados.map(c => c.h));
+  const ws = XLSX.utils.json_to_sheet(linhas, { header: cols });
+  ws["!cols"] = cols.map(h => ({ wch: Math.max(12, Math.min(30, h.length + 2)) }));
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Lançamentos");
+  XLSX.writeFile(wb, "rocketbase-lancamentos.xlsx");
+};
+
+$("#modelo").onclick = () => {
+  if (typeof XLSX === "undefined") return semXlsx("#imp-res");
+  const cols = FIXOS.map(f => f[1]).concat(CAMPOS.map(c => c.h));
+  const ex = { "Nível": 3, "Nome do foguete": "EXEMPLO - apague esta linha", "Data (aaaa-mm-dd)": "2026-10-21", "Cidade": "Campinas", "UF": "SP",
+    "Equipe ou codinome": "Fogueteiro_123", "Objetivo": "Teste", "Distância (m)": 55.5, "Estabilidade": "Estável", "Resumo": "O que funcionou" };
+  const vals = { corpo_garrafa: "PET 2 L", corpo_comp: 45, corpo_peso: 120, corpo_volume: 2000, coifa_material: "Papel", coifa_comp: 12, coifa_peso: 15, coifa_formato: "Cônica",
+    aletas_material: "Papelão", aletas_area: 90, aletas_qtd: 3, aletas_formato: "Trapézio", prop_pressao: 80, prop_angulo: 45, prop_agua: 700, prop_prop_agua: 35 };
+  CAMPOS.forEach(c => { if (vals[c.id] !== undefined) ex[c.h] = vals[c.id]; });
+  const ws = XLSX.utils.json_to_sheet([ex], { header: cols });
+  ws["!cols"] = cols.map(h => ({ wch: Math.max(14, Math.min(30, h.length + 2)) }));
+  const info = [["Como preencher"], ["Uma linha por lançamento. Apague a linha de EXEMPLO (linhas com nome começando em EXEMPLO são ignoradas)."],
+    ["Preencha só as colunas do nível escolhido; as demais são ignoradas. Máximo de " + MAX_LINHAS + " linhas por envio."],
+    ["Obrigatórios: Nível, Nome do foguete, Data, Cidade, UF, Equipe ou codinome e Distância (m)."],
+    ["Objetivo aceita: " + OBJ.join(", ") + ". Estabilidade aceita: " + ESTAB.join(", ") + " (ou em branco)."],
+    ["Números: use ponto ou vírgula decimal. Data: aaaa-mm-dd ou dd/mm/aaaa, ou uma data do Excel."], [],
+    ["Coluna", "Usada nos níveis"]]
+    .concat(FIXOS.map(f => [f[1], "todos"])).concat(CAMPOS.map(c => [c.h, c.niveis.join(", ")]));
+  const wi = XLSX.utils.aoa_to_sheet(info); wi["!cols"] = [{ wch: 48 }, { wch: 20 }];
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Lançamentos"); XLSX.utils.book_append_sheet(wb, wi, "Instruções");
+  XLSX.writeFile(wb, "rocketbase-modelo.xlsx");
+};
+
+function lerData(v) {
+  let m;
+  if (typeof v === "number") { const p = XLSX.SSF.parse_date_code(v); if (!p) return null; v = `${p.y}-${p.m}-${p.d}`; }
+  const s = String(v).trim(), pad = (x) => String(x).padStart(2, "0");
+  let iso = null;
+  if ((m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/))) iso = `${m[1]}-${pad(m[2])}-${pad(m[3])}`;
+  else if ((m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/))) iso = `${m[3]}-${pad(m[2])}-${pad(m[1])}`;
+  if (!iso) return null;
+  const d = new Date(iso + "T00:00:00Z");
+  return !isNaN(d) && d.toISOString().slice(0, 10) === iso && +iso.slice(0, 4) >= 1990 && +iso.slice(0, 4) <= new Date().getFullYear() + 1 ? iso : null;
+}
+const toNum = (v) => typeof v === "number" ? (isFinite(v) ? v : NaN) : (String(v).trim() === "" ? NaN : Number(String(v).trim().replace(",", ".")));
+const vazio = (v) => v == null || String(v).trim() === "";
+
+function lerPlanilha(buf) {
+  const wb = XLSX.read(buf, { type: "array" });
+  const linhas = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: "", raw: true });
+  const res = { ok: [], erros: [], ignoradas: 0, geral: null };
+  if (!linhas.length) { res.geral = "A planilha está vazia."; return res; }
+  if (linhas.length > MAX_LINHAS) { res.geral = `A planilha tem ${linhas.length} linhas. O máximo é ${MAX_LINHAS} por envio; divida em partes.`; return res; }
+  if (!Object.keys(linhas[0]).some(h => LOOK.has(norm(h)))) { res.geral = "Não reconheci as colunas. Use o modelo (botão Baixar modelo) e mantenha os títulos da primeira linha."; return res; }
+  linhas.forEach((row, i) => {
+    const ln = i + 2, f = {}, cp = {}, er = [];
+    Object.entries(row).forEach(([h, v]) => { const l = LOOK.get(norm(h)); if (!l) return; if (l.fixo) f[l.fixo] = v; else cp[l.campo.id] = v; });
+    if ([...Object.values(f), ...Object.values(cp)].every(vazio)) return;           // linha em branco
+    if (norm(f.nome).startsWith("exemplo")) { res.ignoradas++; return; }
+    const falha = (m) => er.push(m);
+    const nivel = toNum(f.nivel);
+    if (!Number.isInteger(nivel) || nivel < 1 || nivel > 5) falha("Nível deve ser um número de 1 a 5");
+    const nome = String(f.nome ?? "").trim().slice(0, 60), cidade = String(f.cidade ?? "").trim().slice(0, 60), equipe = String(f.equipe ?? "").trim().slice(0, 50);
+    if (!nome) falha("falta o nome do foguete"); if (!cidade) falha("falta a cidade"); if (!equipe) falha("falta a equipe ou codinome");
+    const uf = String(f.uf ?? "").trim().toUpperCase(); if (!UFS.includes(uf)) falha("UF inválida");
+    const data = lerData(f.data); if (!data) falha("data inválida (use aaaa-mm-dd ou dd/mm/aaaa)");
+    const alcance = toNum(f.alcance); if (isNaN(alcance) || alcance < 0 || alcance > 100000) falha("distância precisa ser um número maior ou igual a 0");
+    let objetivo = OBJ.find(o => norm(o) === norm(f.objetivo)); if (!objetivo) { if (vazio(f.objetivo)) objetivo = "Teste"; else falha("objetivo inválido (" + OBJ.join(", ") + ")"); }
+    let estab = ""; if (!vazio(f.estab)) { estab = ESTAB.find(o => norm(o) === norm(f.estab)); if (!estab) { estab = ""; falha("estabilidade inválida (" + ESTAB.join(", ") + ")"); } }
+    const dados = { nome, data, cidade, uf, equipe, objetivo, estab, resumo: String(f.resumo ?? "").trim().slice(0, 600) };
+    if (nivel >= 1 && nivel <= 5 && Number.isInteger(nivel)) NIVEIS[nivel].sec.forEach(([k, , fs]) => { dados[k] = {}; fs.forEach(([c, , tipo]) => {
+      const id = k + "_" + c, v = cp[id]; if (vazio(v)) return;
+      const cmp = CAMPOS.find(x => x.id === id);
+      if (tipo === N) { const n = toNum(v); if (isNaN(n) || n < 0) falha(`"${cmp.h}" precisa ser um número maior ou igual a 0`); else dados[k][c] = n; }
+      else dados[k][c] = String(v).trim().slice(0, 60);
+    }); });
+    if (er.length) res.erros.push({ ln, msg: er.join("; ") }); else res.ok.push({ nivel, alcance, dados });
+  });
+  return res;
+}
+async function salvarLote(regs) {
+  if (ONLINE) return API("lancamentos", { method: "POST", body: JSON.stringify(regs.map(r => ({ nivel: r.nivel, alcance: r.alcance, dados: r.dados }))) });
+  const rows = lsGet() || EXEMPLOS, agora = Date.now();
+  lsSet(regs.map((r, i) => ({ ...r, id: "l" + agora + "_" + i, criado: new Date().toISOString() })).concat(rows));
+}
+let PENDENTES = [];
+$("#arquivo").addEventListener("change", async (e) => {
+  const box = $("#imp-res"), file = e.target.files[0]; PENDENTES = [];
+  if (!file) return;
+  if (typeof XLSX === "undefined") return semXlsx("#imp-res");
+  if (file.size > 2 * 1024 * 1024) { box.innerHTML = '<p class="bad">Arquivo muito grande (máximo 2 MB).</p>'; return; }
+  let r;
+  try { r = lerPlanilha(await file.arrayBuffer()); } catch { box.innerHTML = '<p class="bad">Não consegui ler esse arquivo. Envie um .xlsx ou .csv.</p>'; return; }
+  if (r.geral) { box.innerHTML = `<p class="bad">${esc(r.geral)}</p>`; return; }
+  PENDENTES = r.ok;
+  let h = `<p><b>${r.ok.length}</b> lançamento${r.ok.length === 1 ? "" : "s"} pronto${r.ok.length === 1 ? "" : "s"} para enviar`
+    + (r.erros.length ? `, <b class="bad">${r.erros.length}</b> com problema (não serão enviados)` : "") + (r.ignoradas ? `, ${r.ignoradas} de exemplo ignorado${r.ignoradas === 1 ? "" : "s"}` : "") + ".</p>";
+  if (r.erros.length) h += "<ul>" + r.erros.slice(0, 15).map(x => `<li>Linha ${x.ln}: ${esc(x.msg)}</li>`).join("") + (r.erros.length > 15 ? `<li>e mais ${r.erros.length - 15}...</li>` : "") + "</ul><p class='muted'>Corrija na planilha e escolha o arquivo de novo, ou envie só os válidos.</p>";
+  if (r.ok.length) h += `<button class="btn" type="button" id="enviar-lote">Enviar ${r.ok.length} lançamento${r.ok.length === 1 ? "" : "s"} válido${r.ok.length === 1 ? "" : "s"}</button>`;
+  box.innerHTML = h;
+  const b = $("#enviar-lote");
+  if (b) b.onclick = async () => {
+    b.disabled = true; b.textContent = "Enviando...";
+    try { await salvarLote(PENDENTES); DADOS = await carregar(); PENDENTES = []; $("#arquivo").value = "";
+      box.innerHTML = '<p style="color:var(--accent);font-weight:600">Lançamentos enviados. Obrigado por contribuir!</p>'; setTimeout(() => { location.hash = "#explorar"; }, 900); }
+    catch { b.disabled = false; b.textContent = "Tentar enviar de novo"; box.insertAdjacentHTML("beforeend", '<p class="bad">Não foi possível enviar agora. Tente de novo em instantes.</p>'); }
+  };
+});
 
 /* ---------- Estatísticas ---------- */
 function kpis(sel) {
