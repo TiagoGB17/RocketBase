@@ -2,6 +2,6 @@
 // Para o banco público compartilhado, preencha com os dados do seu projeto Supabase
 // (Project Settings > API). A chave "anon public" pode ficar visível no site.
 window.ALCANTRAPET = {
-  supabaseUrl: "",   // ex.: "https://abcdxyz.supabase.co"
-  supabaseKey: ""    // ex.: "eyJhbGciOi..."
+  supabaseUrl: "https://mpseyhjmiwkhyabswcnd.supabase.co", 
+  supabaseKey: "sb_publishable_OURhL9VV8_RdV6PqaoUgLg_VNnFRM5k"
 };
